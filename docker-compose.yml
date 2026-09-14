@@ -31,5 +31,21 @@ services:
     depends_on:
       - postgres
 
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+
+    container_name: weather-app
+
+    env_file:
+      - .env
+
+    volumes:
+      - .:/app
+
+    depends_on:
+      - postgres
+
 volumes:
   pgtables:
