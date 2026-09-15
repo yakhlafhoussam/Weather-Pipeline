@@ -1,6 +1,5 @@
 import pandas as pd
 
-df = pd.read_csv("sources/worldcities.csv")
-morocco = df[df["country"] == "Morocco"]
+df = pd.read_csv("sources/ma.csv")
 
-morocco.to_csv("morocco_cities.csv", index=False)
+df.to_csv("data/bronze/cities", index=False)
