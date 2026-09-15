@@ -5,7 +5,7 @@ def getData(path):
     return df
 
 def storeCities(cities, path):
-    cities.to_csv(f"{path}cities.csv", index=False)
+    cities.to_csv(f"{path}cities/cities.csv", index=False)
 
 def prepareUrl(lat, lng):
     url = f"https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lng}&hourly=temperature_2m"
