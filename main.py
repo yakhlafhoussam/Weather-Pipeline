@@ -1,5 +1,6 @@
 import pandas as pd
 import requests
+import json
 
 def getData(path):
     df = pd.read_csv(path)
@@ -21,15 +22,16 @@ def prepareUrl(lat, lng):
             "wind_gusts_10m_max,"
             "weather_code"
         ),
-        "forecast_days": 7,
+        "forecast_days": 3,
         "timezone": "auto"
     }
-
+    
     response = requests.get(
         "https://api.open-meteo.com/v1/forecast",
         params=params
     )
-
+    response.raise_for_status()
+    
     return response
 
 origine = "sources/ma.csv"
@@ -42,5 +44,6 @@ storeCities(cities, bronze)
 
 for _, col in cities.iterrows():
     response = prepareUrl(col["lat"], col["lng"])
+    data = response.json()
     with open(f"{bronze}/weather/{col["city"]}.json", "w") as f:
-        f.write(response.text)
+        json.dump(data, f, indent=2)
