@@ -90,4 +90,13 @@ df["date"] = pd.to_datetime(df["date"])
 
 df = df.drop_duplicates()
 
+df = df[df["temperature_2m_min"] <= df["temperature_2m_max"]]
+
+df = df.dropna()
+
+df = df[
+    (df["precipitation_sum"] >= 0)
+    & (df["wind_speed_10m_max"] >= 0)
+]
+
 df.to_csv(f"{silver}/weather_clean.csv", index=False)
