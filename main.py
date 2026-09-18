@@ -12,17 +12,11 @@ from transformation.silver import (
     run_silver
 )
 
-from transformation.gold import (
-    run_gold
-)
-
-
 origine = "sources/ma.csv"
 
 bronze = "data/bronze"
 silver = "data/silver"
 gold = "data/gold"
-
 
 # =========================
 # Bronze
@@ -46,7 +40,6 @@ store_weather(
     bronze
 )
 
-
 # =========================
 # Silver
 # =========================
@@ -56,12 +49,6 @@ run_silver(
     f"{silver}/weather_clean.csv"
 )
 
-
 # =========================
 # Gold
 # =========================
-
-run_gold(
-    f"{silver}/weather_clean.csv",
-    f"{gold}/weather_features.csv"
-)
