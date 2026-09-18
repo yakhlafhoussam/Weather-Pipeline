@@ -1,6 +1,9 @@
 import pandas as pd
 import requests
 import json
+from pathlib import Path
+
+#=================================Bronze=======================================
 
 def getData(path):
     df = pd.read_csv(path)
@@ -39,11 +42,24 @@ bronze = "data/bronze"
 silver = "data/silver"
 gold = "data/gold"
 
-cities = getData(origine)
-storeCities(cities, bronze)
+#=================================Bronze=======================================
 
-for _, col in cities.iterrows():
-    response = prepareUrl(col["lat"], col["lng"])
-    data = response.json()
-    with open(f"{bronze}/weather/{col["city"]}.json", "w") as f:
-        json.dump(data, f, indent=2)
+# cities = getData(origine)
+# storeCities(cities, bronze)
+
+# weather_data = []
+
+# for _, col in cities.iterrows():
+#     response = prepareUrl(col["lat"], col["lng"])
+#     data = response.json()
+
+#     weather_data.append({
+#         "city": col["city"],
+#         "data": data
+#     })
+
+# with open(f"{bronze}/weather/weather.json", "w") as f:
+#     json.dump(weather_data, f, indent=2)
+
+#=================================Silver=======================================
+
