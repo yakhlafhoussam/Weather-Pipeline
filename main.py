@@ -1,16 +1,6 @@
-from extraction.cities import (
-    get_data,
-    store_cities
-)
+from extraction.bronze import run_bronze
 
-from extraction.weather import (
-    extract_weather,
-    store_weather
-)
-
-from transformation.silver import (
-    run_silver
-)
+from transformation.silver import run_silver
 
 origine = "sources/ma.csv"
 
@@ -22,33 +12,16 @@ gold = "data/gold"
 # Bronze
 # =========================
 
-cities = get_data(
-    origine
-)
-
-store_cities(
-    cities,
-    bronze
-)
-
-weather_data = extract_weather(
-    cities
-)
-
-store_weather(
-    weather_data,
-    bronze
-)
+run_bronze(origine, bronze)
 
 # =========================
 # Silver
 # =========================
 
-run_silver(
-    f"{bronze}/weather/weather.json",
-    f"{silver}/weather_clean.csv"
-)
+run_silver(f"{bronze}/weather/weather.json", f"{silver}/weather_clean.csv")
 
 # =========================
 # Gold
 # =========================
+
+print("Gold is ready to dev")
