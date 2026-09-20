@@ -1,5 +1,10 @@
 import pandas as pd
 
+
+def load_silver(path):
+    return pd.read_csv(path)
+
+
 # =================================
 # Temperature Category
 # =================================
