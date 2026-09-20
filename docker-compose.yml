@@ -48,5 +48,22 @@ services:
     depends_on:
       - postgres
 
+  airflow:
+    build:
+      context: .
+      dockerfile: Dockerfile.airflow
+
+    container_name: airflow
+
+    ports:
+      - "8080:8080"
+
+    volumes:
+      - ./dags:/opt/airflow/dags
+      - ./extraction:/opt/airflow/extraction
+      - ./transformation:/opt/airflow/transformation
+      - ./load:/opt/airflow/load
+      - ./data:/opt/airflow/data
+
 volumes:
   pgtables:
