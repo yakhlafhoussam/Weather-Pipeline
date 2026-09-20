@@ -4,6 +4,8 @@ from transformation.silver import run_silver
 
 from transformation.gold import run_gold
 
+from load.load import save_data
+
 origine = "sources/ma.csv"
 
 bronze = "data/bronze"
@@ -27,3 +29,4 @@ run_silver(f"{bronze}/weather/weather.json", f"{silver}/weather_clean.csv")
 # =========================
 
 run_gold(f"{silver}/weather_clean.csv", f"{gold}/weather_gold.csv")
+save_data()
