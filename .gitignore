@@ -1,4 +1,2 @@
 .env
 venv
-extraction/__pycache__
-transformation/__pycache__
