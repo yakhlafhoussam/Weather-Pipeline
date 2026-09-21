@@ -20,24 +20,22 @@ def save_data():
     # Load cities
     # =========================
 
-    cities = pd.read_csv("../data/bronze/cities/cities.csv")
+    cities = pd.read_csv("/opt/airflow/data/bronze/cities/cities.csv")
 
     for row in cities.itertuples(index=False):
 
         cursor.execute(
             """
             INSERT INTO city (
-                id, city, city_ascii, lat, lng,
+                city, lat, lng,
                 country, iso2, admin_name,
                 capital, population
             )
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
             ON CONFLICT (id) DO NOTHING
         """,
             (
-                row.id,
                 row.city,
-                row.city_ascii,
                 row.lat,
                 row.lng,
                 row.country,
@@ -53,7 +51,7 @@ def save_data():
     # Load weather
     # =========================
 
-    weather = pd.read_csv("../data/gold/weather_gold.csv")
+    weather = pd.read_csv("/opt/airflow/data/gold/weather_gold.csv")
 
     for row in weather.itertuples(index=False):
 

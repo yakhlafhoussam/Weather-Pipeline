@@ -15,7 +15,9 @@ services:
 
     volumes:
       - pgtables:/var/lib/postgresql/data
-      - ./sql/schema.sql:/docker-entrypoint-initdb.d/schema.sql:ro
+      - ./sql/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
+      - ./sql/init.sql:/docker-entrypoint-initdb.d/02-init.sql:ro
+
 
   pgadmin:
     image: dpage/pgadmin4
@@ -31,6 +33,7 @@ services:
 
     depends_on:
       - postgres
+
 
   app:
     build:
@@ -48,12 +51,25 @@ services:
     depends_on:
       - postgres
 
+
   airflow:
     build:
       context: .
       dockerfile: Dockerfile.airflow
 
     container_name: airflow
+    restart: always
+
+    user: "${AIRFLOW_UID:-1000}:0"
+
+    env_file:
+    - .env
+
+    environment:
+      AIRFLOW__CORE__EXECUTOR: SequentialExecutor
+      AIRFLOW__CORE__LOAD_EXAMPLES: "false"
+      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://weather_user:${POSTGRES_PASSWORD}@postgres:5432/airflow
+      PYTHONPATH: /opt/airflow
 
     ports:
       - "8080:8080"
@@ -64,6 +80,13 @@ services:
       - ./transformation:/opt/airflow/transformation
       - ./load:/opt/airflow/load
       - ./data:/opt/airflow/data
+      - ./sources:/opt/airflow/sources
+
+    depends_on:
+      - postgres
+
+    command: standalone
+
 
 volumes:
   pgtables:
