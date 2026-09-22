@@ -522,9 +522,7 @@ This allows weather information to become an input for operational planning.
 
 The project architecture and data flow are documented in:
 
-```text
-UML/UML.png
-```
+![UML Diagram](UML/UML.png)
 
 The UML diagram represents the main components and relationships of the data pipeline.
 
