@@ -1,598 +1,333 @@
-# 🌦️ Weather Decision Support Data Pipeline
+# Weatherly
 
-> **End-to-End Data Pipeline for Weather Risk Analysis in Moroccan Cities**
+## Morocco Weather Intelligence and Delivery-Risk Pipeline
 
-## 📌 Project Overview
+Weatherly is an end-to-end data platform that turns short-term weather forecasts for Moroccan cities into delivery-oriented risk indicators. It extracts city and forecast data, processes it through a Bronze/Silver/Gold pipeline, loads the result into PostgreSQL, and presents the latest forecast in an interactive Streamlit dashboard.
 
-This project implements an end-to-end data pipeline designed to help a Moroccan logistics and delivery company anticipate weather-related operational risks.
+The project answers a practical operational question:
 
-Weather conditions such as **heavy precipitation, strong winds, and extreme temperatures** can affect delivery operations, schedules, and transportation conditions.
+> Which Moroccan cities and forecast dates may present the highest weather-related delivery risk?
 
-The pipeline collects weather forecasts for Moroccan cities, transforms and validates the data through multiple processing layers, calculates a **Weather Risk Score**, stores the processed data in PostgreSQL, and provides the foundation for business-oriented analysis and decision support.
+The risk score is a decision-support estimate based on forecast variables. It is not an official meteorological warning.
 
-### Business Question
+## What the project provides
 
-> **Which cities and periods present the highest weather-related risks during the upcoming days?**
+- Three-day weather forecasts for the cities in `sources/ma.csv`.
+- Raw source preservation in a Bronze layer.
+- Clean, validated city-day records in a Silver layer.
+- Business features and a 0-100 weather risk score in a Gold layer.
+- PostgreSQL tables for city metadata and forecast analytics.
+- A daily Airflow DAG that runs `bronze -> silver -> gold -> load`.
+- A Streamlit dashboard for filtering cities, dates, and risk levels.
+- CSV export of the filtered forecast shown in the dashboard.
 
-The final dataset allows decision-makers to:
-
-* Compare weather conditions between cities.
-* Identify periods with higher operational risk.
-* Monitor precipitation, wind, and temperature conditions.
-* Prioritize cities requiring additional attention.
-* Support operational planning and delivery decisions.
-
----
-
-# 🏗️ Architecture
-
-The project follows a **Bronze → Silver → Gold** data architecture.
+## Architecture
 
 ```text
-                         ┌─────────────────────┐
-                         │   Moroccan Cities   │
-                         │      CSV Source     │
-                         └──────────┬──────────┘
-                                    │
-                                    ▼
-                         ┌─────────────────────┐
-                         │   Open-Meteo API    │
-                         │  Weather Forecasts  │
-                         └──────────┬──────────┘
-                                    │
-                                    ▼
-                         ┌─────────────────────┐
-                         │       BRONZE        │
-                         │   Raw Source Data   │
-                         │                     │
-                         │ cities.csv          │
-                         │ weather.json        │
-                         └──────────┬──────────┘
-                                    │
-                                    ▼
-                         ┌─────────────────────┐
-                         │       SILVER        │
-                         │ Cleaning &           │
-                         │ Standardization     │
-                         │                     │
-                         │ weather_clean.csv   │
-                         └──────────┬──────────┘
-                                    │
-                                    ▼
-                         ┌─────────────────────┐
-                         │        GOLD         │
-                         │ Feature Engineering │
-                         │ & Risk Calculation  │
-                         │                     │
-                         │ weather_gold.csv    │
-                         └──────────┬──────────┘
-                                    │
-                                    ▼
-                         ┌─────────────────────┐
-                         │     PostgreSQL      │
-                         │   Data Warehouse    │
-                         └──────────┬──────────┘
-                                    │
-                     ┌──────────────┴──────────────┐
-                     ▼                             ▼
-             ┌─────────────────┐          ┌─────────────────┐
-             │ SQL Analysis    │          │   Dashboard     │
-             │ Business Queries│          │   & Reporting   │
-             └─────────────────┘          └─────────────────┘
-
-                         ▲
-                         │
-                  ┌──────┴──────┐
-                  │   Airflow   │
-                  │ Orchestration│
-                  └─────────────┘
+sources/ma.csv
+       |
+       v
+Bronze: city copy + raw Open-Meteo responses
+       |
+       v
+Silver: flattened and validated city-day weather records
+       |
+       v
+Gold: categories, component risks, and weighted risk score
+       |
+       v
+PostgreSQL: city and weather tables
+       |                         |
+       v                         v
+Airflow orchestration       Streamlit dashboard
+                             Plotly analysis and CSV export
 ```
 
----
+The containerized stack includes:
 
-# 📂 Project Structure
+| Service | Role | Default URL |
+| --- | --- | --- |
+| `postgres` | Stores city and forecast data | `localhost:5432` |
+| `pgadmin` | PostgreSQL administration UI | `http://localhost:5050` |
+| `dashboard` | Streamlit weather intelligence UI | `http://localhost:8501` |
+| `airflow` | Schedules and runs the ETL DAG | `http://localhost:8080` |
+| `app` | Python runtime for the project files | Internal container |
+
+![Pipeline architecture](UML/UML.png)
+
+## Data flow
+
+### 1. Bronze: extraction
+
+`extraction/bronze.py` reads the Moroccan city catalog from `sources/ma.csv`, stores a copy at `data/bronze/cities/cities.csv`, and calls the [Open-Meteo Forecast API](https://open-meteo.com/en/docs) for each city.
+
+Each request asks for three forecast days and the following daily variables:
+
+- Maximum and minimum temperature.
+- Precipitation sum and maximum precipitation probability.
+- Maximum wind speed and wind gusts.
+- Open-Meteo weather code.
+
+The raw responses are preserved in `data/bronze/weather/weather.json`.
+
+### 2. Silver: cleaning and normalization
+
+`transformation/silver.py` flattens Open-Meteo's nested `daily` response into one row per city and forecast date. It then:
+
+- Converts dates to datetime values.
+- Removes duplicate records.
+- Rejects rows where minimum temperature exceeds maximum temperature.
+- Removes missing values.
+- Rejects negative precipitation and wind values.
+
+Output: `data/silver/weather_clean.csv`.
+
+### 3. Gold: feature engineering and risk scoring
+
+`transformation/gold.py` adds temperature, precipitation, and wind categories, plus a component risk score for each factor.
+
+The final score is calculated as:
+
+```text
+risk_score = precipitation_risk * 0.40
+           + wind_risk          * 0.35
+           + temperature_risk   * 0.25
+```
+
+Each component is scored from 0 to 100. The resulting score is classified as:
+
+| Score | Category |
+| ---: | --- |
+| `< 25` | `Faible` |
+| `25-49` | `Modéré` |
+| `50-74` | `Élevé` |
+| `>= 75` | `Très élevé` |
+
+Output: `data/gold/weather_gold.csv`.
+
+### 4. Load: PostgreSQL
+
+`load/load.py` inserts the Gold data into PostgreSQL:
+
+- `city` stores city identity, coordinates, country, administrative area, capital status, and population.
+- `weather` stores one forecast record per city and date, including measurements, categories, component risks, and the final risk classification.
+- A unique constraint on `(city_id, date)` prevents duplicate forecast records.
+
+The database schema is created from `sql/schema.sql`. `sql/init.sql` creates the separate `airflow` database used by Airflow.
+
+## Dashboard
+
+The Streamlit application is implemented in `dashboard/app.py` and reads Gold records from PostgreSQL. It provides:
+
+- Featured-city forecast summary with high/low temperature and risk level.
+- KPI cards for cities in view, forecast records, high-risk records, and average risk score.
+- Daily forecast cards with precipitation probability and wind speed.
+- Weather risk trends across the selected cities.
+- Temperature, precipitation, and wind analysis tabs.
+- City risk comparison ranked by average risk score.
+- A detailed filtered forecast table.
+- Download of the current filtered view as `morocco_weather_forecast.csv`.
+- Cached database reads with a five-minute TTL and a manual refresh control.
+
+### Dashboard screenshots
+
+#### Forecast overview
+
+![Weatherly forecast overview](screenshots/dashboard_1.png)
+
+#### Trends and weather conditions
+
+![Weatherly trends and conditions](screenshots/dashboard_2.png)
+
+#### City risk comparison
+
+![Weatherly city risk comparison](screenshots/dashboard_3.png)
+
+### Airflow run
+
+The DAG is configured with a daily schedule and `catchup=False`. The screenshot below shows a successful run with all four tasks completed in sequence.
+
+![Successful Airflow weather pipeline run](screenshots/airflow.png)
+
+## Repository structure
 
 ```text
 .
 ├── dags/
-│   └── main.py
-│
+│   └── main.py                  # Airflow DAG
+├── dashboard/
+│   └── app.py                   # Streamlit dashboard
 ├── data/
-│   ├── bronze/
-│   │   ├── cities/
-│   │   │   └── cities.csv
-│   │   └── weather/
-│   │       └── weather.json
-│   │
-│   ├── silver/
-│   │   └── weather_clean.csv
-│   │
-│   └── gold/
-│       └── weather_gold.csv
-│
+│   ├── bronze/                  # Raw and source-aligned data
+│   ├── silver/                  # Clean city-day records
+│   └── gold/                    # Business-ready forecast features
 ├── extraction/
-│   └── bronze.py
-│
+│   └── bronze.py                # City ingestion and API extraction
 ├── transformation/
-│   ├── silver.py
-│   └── gold.py
-│
+│   ├── silver.py                # Flattening and validation
+│   └── gold.py                  # Categories and risk scoring
 ├── load/
-│   └── load.py
-│
-├── sql/
-│   ├── init.sql
-│   └── schema.sql
-│
+│   └── load.py                  # PostgreSQL loading
 ├── sources/
-│   └── ma.csv
-│
+│   └── ma.csv                   # Moroccan city input catalog
+├── sql/
+│   ├── init.sql                 # Airflow database initialization
+│   └── schema.sql               # Weather warehouse schema
+├── screenshots/                 # Dashboard and pipeline captures
 ├── UML/
-│   └── UML.png
-│
+│   └── UML.png                  # Architecture diagram
 ├── Dockerfile
 ├── Dockerfile.airflow
 ├── docker-compose.yml
 ├── requirements.txt
+├── .env.example
 └── README.md
 ```
 
----
+## Quick start with Docker
 
-# 🔄 Data Pipeline
+### Prerequisites
 
-## 1. Extraction — Bronze
+- Docker Engine with Docker Compose.
+- Internet access during extraction so the Open-Meteo API can be reached.
+- Git, if cloning the repository.
 
-The extraction layer retrieves data from two sources:
-
-### Moroccan Cities Dataset
-
-The project uses a CSV dataset containing Moroccan cities and geographical information such as:
-
-* City name
-* Latitude
-* Longitude
-* Country
-* Administrative information
-* Population
-
-The resulting city dataset is stored in:
-
-```text
-data/bronze/cities/cities.csv
-```
-
-### Open-Meteo API
-
-The geographical coordinates of each city are used to request weather forecasts from the **Open-Meteo API**.
-
-The pipeline retrieves daily forecast information including:
-
-* Maximum temperature
-* Minimum temperature
-* Precipitation sum
-* Maximum precipitation probability
-* Maximum wind speed
-* Maximum wind gusts
-* Weather code
-
-The raw API responses are preserved in:
-
-```text
-data/bronze/weather/weather.json
-```
-
-The Bronze layer keeps the source data as close as possible to its original structure.
-
----
-
-# 🧹 2. Transformation — Silver
-
-The Silver layer prepares the raw weather data for analysis.
-
-The nested `daily` structure returned by the API is transformed into a tabular format where:
-
-> **One row represents one city for one forecast date.**
-
-For example:
-
-```text
-city        date        temperature_max   temperature_min   precipitation
-Casablanca  2026-09-18  24.6              18.8              0.0
-Casablanca  2026-09-19  26.7              19.3              0.0
-...
-```
-
-The Silver transformation includes:
-
-* Flattening the nested weather structure.
-* Standardizing the date field.
-* Converting data into a tabular DataFrame.
-* Removing duplicate records.
-* Preparing the data for feature engineering.
-
-Output:
-
-```text
-data/silver/weather_clean.csv
-```
-
-Implementation:
-
-```text
-transformation/silver.py
-```
-
----
-
-# 📊 3. Transformation — Gold
-
-The Gold layer contains business-oriented data prepared for decision support.
-
-This layer enriches the Silver dataset with weather indicators and risk-related features.
-
-The pipeline calculates a:
-
-## Weather Risk Score
-
-The risk score combines the main weather factors that can affect delivery operations:
-
-* Precipitation
-* Wind
-* Temperature
-
-The resulting score is used to classify weather conditions into risk levels.
-
-The Gold dataset is stored in:
-
-```text
-data/gold/weather_gold.csv
-```
-
-Implementation:
-
-```text
-transformation/gold.py
-```
-
----
-
-# 🗄️ 4. Data Loading
-
-The processed Gold data is loaded into **PostgreSQL** for persistent storage and business analysis.
-
-The database contains structured weather and city information designed to support:
-
-* Historical and forecast analysis.
-* City comparisons.
-* Risk analysis.
-* SQL business queries.
-* Dashboard consumption.
-
-Database scripts:
-
-```text
-sql/init.sql
-sql/schema.sql
-```
-
-Loading implementation:
-
-```text
-load/load.py
-```
-
----
-
-# 🔎 5. SQL Analysis
-
-The project includes SQL queries designed to answer business questions from the processed weather data.
-
-Examples of supported analyses include:
-
-* Which cities have the highest temperatures?
-* Which cities have the highest precipitation?
-* Which cities have the highest average weather risk?
-* Which forecast periods have the highest risk?
-* What is the highest-risk period for each city?
-
-SQL files:
-
-```text
-sql/
-├── init.sql
-└── schema.sql
-```
-
----
-
-# ⚙️ 6. Airflow Orchestration
-
-Apache Airflow is used to automate and orchestrate the pipeline.
-
-The DAG coordinates the different stages of the workflow:
-
-```text
-Extraction
-    ↓
-Silver Transformation
-    ↓
-Gold Transformation
-    ↓
-PostgreSQL Load
-```
-
-Airflow implementation:
-
-```text
-dags/main.py
-```
-
-The Airflow environment is configured using:
-
-```text
-Dockerfile.airflow
-```
-
----
-
-# 🐳 7. Docker
-
-The project is designed to run in a containerized environment.
-
-Docker is used to provide reproducible environments for the application and data infrastructure.
-
-Main Docker files:
-
-```text
-Dockerfile
-Dockerfile.airflow
-docker-compose.yml
-```
-
-The architecture can include the following services:
-
-```text
-┌─────────────────┐
-│     Airflow     │
-│  Orchestration  │
-└────────┬────────┘
-         │
-         ▼
-┌─────────────────┐
-│   Python App    │
-│ ETL Processing  │
-└────────┬────────┘
-         │
-         ▼
-┌─────────────────┐
-│   PostgreSQL    │
-│   Data Storage  │
-└─────────────────┘
-```
-
----
-
-# 🛠️ Technologies
-
-| Technology     | Purpose                              |
-| -------------- | ------------------------------------ |
-| Python         | Data pipeline development            |
-| Pandas         | Data manipulation and transformation |
-| NumPy          | Numerical processing                 |
-| Requests       | API communication                    |
-| Open-Meteo API | Weather forecast data                |
-| PostgreSQL     | Data storage and analysis            |
-| SQL            | Business analysis                    |
-| Apache Airflow | Pipeline orchestration               |
-| Docker         | Containerization                     |
-| Streamlit      | Dashboard / data visualization       |
-| Git            | Version control                      |
-
----
-
-# 🚀 Installation & Execution
-
-## Prerequisites
-
-Make sure the following tools are installed:
-
-* Docker
-* Docker Compose
-* Git
-
-Clone the repository:
+### 1. Clone the repository
 
 ```bash
 git clone https://github.com/yakhlafhoussam/Weather-Pipeline.git
 cd Weather-Pipeline
 ```
 
----
+### 2. Configure environment variables
 
-## Start the project
+Create a local `.env` file from the included template:
 
-Build the Docker images:
+```bash
+cp .env.example .env
+```
+
+The template defines the PostgreSQL credentials and exposed ports:
+
+```dotenv
+POSTGRES_DB=weather_db
+POSTGRES_USER=weather_user
+POSTGRES_PASSWORD=password
+POSTGRES_PORT=5432
+AIRFLOW_UID=1000
+PGADMIN_DEFAULT_EMAIL=email@email.com
+PGADMIN_DEFAULT_PASSWORD=password
+PGADMIN_DEFAULT_PORT=5050
+STREAMLIT_PORT=8501
+```
+
+Change the example passwords before using the stack outside local development. Do not commit `.env` or real credentials.
+
+### 3. Build and start the stack
 
 ```bash
 docker compose build
-```
-
-Start the services:
-
-```bash
 docker compose up -d
-```
-
-Check running containers:
-
-```bash
 docker compose ps
 ```
 
-View logs:
+Open the interfaces:
+
+- Dashboard: [http://localhost:8501](http://localhost:8501)
+- Airflow: [http://localhost:8080](http://localhost:8080)
+- pgAdmin: [http://localhost:5050](http://localhost:5050)
+
+The actual host ports come from `.env`, so update the URLs if those values are changed.
+
+### 4. Run the pipeline
+
+Airflow starts in standalone mode and loads the `weather_pipeline` DAG. Trigger it from the Airflow UI, or use the Airflow container:
 
 ```bash
-docker compose logs -f
+docker compose exec airflow airflow dags list
+docker compose exec airflow airflow dags trigger weather_pipeline
 ```
 
----
-
-# ▶️ Running the Pipeline
-
-The pipeline follows this order:
+The task order is:
 
 ```text
-1. Extract
-      ↓
-2. Bronze
-      ↓
-3. Silver
-      ↓
-4. Gold
-      ↓
-5. PostgreSQL
-      ↓
-6. SQL Analysis
+bronze -> silver -> gold -> load
 ```
 
-The individual components can be found in:
+After a successful run, refresh the dashboard if it was already open.
 
-```text
-extraction/
-transformation/
-load/
-sql/
+### 5. Inspect logs and stop the stack
+
+```bash
+docker compose logs -f airflow
+docker compose logs -f dashboard
+docker compose down
 ```
 
-Airflow is responsible for orchestrating the workflow automatically.
+To remove the PostgreSQL volume and start with an empty database, use this only when the stored data can be discarded:
 
----
-
-# 🧪 Data Quality
-
-Data quality is considered at multiple stages of the pipeline.
-
-### Bronze
-
-The raw data is preserved without unnecessary modifications.
-
-### Silver
-
-The pipeline performs transformations such as:
-
-* Date standardization.
-* Type normalization.
-* Duplicate detection/removal.
-* Structural validation.
-* Preparation of clean tabular data.
-
-### Gold
-
-The transformed data is enriched with:
-
-* Weather categories.
-* Risk indicators.
-* Weather Risk Score.
-* Business-oriented features.
-
----
-
-# 📈 Business Value
-
-The pipeline transforms raw weather forecasts into information that can support logistics decision-making.
-
-Instead of looking directly at raw API responses, users can answer questions such as:
-
-```text
-Where is the weather risk highest?
-
-When are the most risky forecast periods?
-
-Which cities require additional attention?
-
-What weather factors contribute to the risk?
+```bash
+docker compose down -v
 ```
 
-This allows weather information to become an input for operational planning.
+## Running pipeline stages locally
 
----
+The stage functions are exposed by the project modules and are called by Airflow. From the repository root, the equivalent sequence is:
 
-# 🗺️ UML
+```python
+from extraction.bronze import run_bronze
+from transformation.silver import run_silver
+from transformation.gold import run_gold
 
-The project architecture and data flow are documented in:
-
-![UML Diagram](UML/UML.png)
-
-The UML diagram represents the main components and relationships of the data pipeline.
-
----
-
-# 📁 Data Layers
-
-| Layer  | Location       | Purpose                        |
-| ------ | -------------- | ------------------------------ |
-| Bronze | `data/bronze/` | Raw extracted data             |
-| Silver | `data/silver/` | Cleaned and standardized data  |
-| Gold   | `data/gold/`   | Business-ready analytical data |
-
----
-
-# 🔐 Data & API
-
-The project uses the Open-Meteo weather API for forecast data.
-
-No sensitive personal data is required by the pipeline.
-
----
-
-# 👨‍💻 Project Organization
-
-```text
-Extraction
-    → Retrieve source data and weather forecasts
-
-Transformation
-    → Clean, validate and enrich the data
-
-Load
-    → Store processed data in PostgreSQL
-
-SQL
-    → Perform business analysis
-
-Airflow
-    → Automate and orchestrate the pipeline
+run_bronze("sources/ma.csv", "data/bronze")
+run_silver(
+    "data/bronze/weather/weather.json",
+    "data/silver/weather_clean.csv",
+)
+run_gold(
+    "data/silver/weather_clean.csv",
+    "data/gold/weather_gold.csv",
+)
 ```
 
----
+The PostgreSQL loader expects the Airflow container paths `/opt/airflow/data/...` and a reachable service named `postgres`, so the Docker/Airflow execution path is the supported end-to-end load workflow.
 
-# 🎯 Project Objective
+## Useful SQL checks
 
-The main objective is to demonstrate the construction of a complete data engineering pipeline capable of transforming raw external data into actionable information.
+Connect to the `weather_db` database with the credentials in `.env`, then inspect the loaded data:
 
-The project covers the complete workflow:
+```sql
+SELECT COUNT(*) FROM city;
 
-> **Extract → Store → Transform → Enrich → Load → Analyze → Orchestrate**
+SELECT COUNT(*) FROM weather;
 
----
+SELECT city.city, weather.date, weather.risk_score, weather.risk_category
+FROM weather
+JOIN city ON city.id = weather.city_id
+ORDER BY weather.risk_score DESC
+LIMIT 10;
+```
 
-# 📌 Project Status
+## Technology stack
 
-| Component              | Status |
-| ---------------------- | ------ |
-| City data extraction   | ✅      |
-| Weather API extraction | ✅      |
-| Bronze layer           | ✅      |
-| Silver transformation  | ✅      |
-| Gold transformation    | ✅      |
-| PostgreSQL loading     | ✅      |
-| SQL analysis           | ✅      |
-| Airflow orchestration  | ✅      |
-| UML                    | ✅      |
+| Technology | Purpose |
+| --- | --- |
+| Python | Extraction, transformation, and loading code |
+| Pandas | Tabular cleaning and feature engineering |
+| Requests | Open-Meteo API requests |
+| Open-Meteo | Weather forecast source |
+| PostgreSQL | Persistent analytical storage |
+| psycopg | PostgreSQL connectivity |
+| Apache Airflow | Scheduling and orchestration |
+| Streamlit | Interactive dashboard |
+| Plotly | Dashboard charts |
+| Docker Compose | Local multi-service environment |
 
----
+## Data and operational notes
 
-# 📜 License
-
-This project was developed for educational purposes as part of a data engineering project at **YouCode Safi**.
+- Open-Meteo forecast data is external and can change between pipeline runs.
+- The Bronze layer is intentionally retained to make the source response inspectable.
+- The Gold risk score is a transparent weighted heuristic, not a machine-learning prediction.
+- The dashboard explicitly labels its data as forecast data, not live observations.
+- The PostgreSQL volume is persistent across normal `docker compose down` and `up` cycles.
+- The Open-Meteo API and the city catalog should be treated as external dependencies when deploying this project.
