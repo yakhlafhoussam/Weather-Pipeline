@@ -52,6 +52,27 @@ services:
       - postgres
 
 
+  dashboard:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: weather-dashboard
+    restart: unless-stopped
+    env_file:
+      - .env
+    ports:
+      - "${STREAMLIT_PORT}:8501"
+    depends_on:
+      - postgres
+    command:
+      - streamlit
+      - run
+      - dashboard/app.py
+      - --server.address=0.0.0.0
+      - --server.port=8501
+      - --server.headless=true
+
+
   airflow:
     build:
       context: .
